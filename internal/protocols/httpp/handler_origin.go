@@ -66,7 +66,7 @@ func isOriginAllowed(origin string, allowOrigins []string) bool {
 	return false
 }
 
-// add Access-Control-Allow-Origin header.
+// add Access-Control-Allow-Origin and Access-Control-Allow-Credentials headers.
 type handlerOrigin struct {
 	h            http.Handler
 	allowOrigins []string
@@ -76,6 +76,7 @@ func (h *handlerOrigin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if origin := r.Header.Get("Origin"); origin != "" {
 		if ok := isOriginAllowed(origin, h.allowOrigins); ok {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Vary", "Origin")
 		}
 	}

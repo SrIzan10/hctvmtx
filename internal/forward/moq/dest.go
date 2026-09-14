@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/sync/errgroup"
 
@@ -30,7 +31,7 @@ type Dest struct {
 	mutex         sync.RWMutex
 	client        *protomoq.Client
 	transport     string
-	outboundBytes uint64
+	outboundBytes atomic.Uint64
 }
 
 // Log implements logger.Writer.
@@ -39,31 +40,30 @@ func (d *Dest) Log(level logger.Level, format string, args ...any) {
 }
 
 func (d *Dest) addOutboundBytes(n int) {
-	d.mutex.Lock()
-	defer d.mutex.Unlock()
-
-	d.outboundBytes += uint64(n)
+	d.outboundBytes.Add(uint64(n))
 }
 
 // Info returns runtime information.
 func (d *Dest) Info() defs.ForwardDestInfo {
 	d.mutex.RLock()
-	defer d.mutex.RUnlock()
+	transport := d.transport
+	client := d.client
+	d.mutex.RUnlock()
 
-	if d.transport == "" {
+	if transport == "" {
 		return defs.ForwardDestInfo{}
 	}
 
-	info := defs.ForwardDestInfo{
-		OutboundBytes: d.outboundBytes,
+	outboundBytes := d.outboundBytes.Load()
+
+	return defs.ForwardDestInfo{
+		OutboundBytes: outboundBytes,
 		TypeSpecific: &defs.APIForwardDestTypeSpecificMoQ{
-			RemoteAddr:    d.client.RemoteAddr().String(),
-			Transport:     d.transport,
-			OutboundBytes: d.outboundBytes,
+			RemoteAddr:    client.RemoteAddr().String(),
+			Transport:     transport,
+			OutboundBytes: outboundBytes,
 		},
 	}
-
-	return info
 }
 
 // Run runs the destination.
@@ -99,8 +99,8 @@ func (d *Dest) Run(ctx context.Context) error {
 		d.mutex.Lock()
 		d.client = nil
 		d.transport = ""
-		d.outboundBytes = 0
 		d.mutex.Unlock()
+		d.outboundBytes.Store(0)
 	}()
 
 	r := &stream.Reader{Parent: d}

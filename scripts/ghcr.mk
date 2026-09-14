@@ -1,4 +1,4 @@
-GHCR_REPOSITORY = ghcr.io/SrIzan10/hctvmtx
+GHCR_REPOSITORY = ghcr.io/srizan10/hctvmtx
 
 ghcr:
 	$(eval VERSION := $(shell git rev-parse --short HEAD))

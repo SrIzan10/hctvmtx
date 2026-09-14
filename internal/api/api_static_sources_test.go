@@ -34,6 +34,16 @@ func (*testStaticSourcesPathManager) APIForwardDestsGet(string, uuid.UUID) (*def
 	return nil, conf.ErrPathNotFound
 }
 
+func (*testStaticSourcesPathManager) APIForwardDestsAdd(
+	string, conf.ForwardDest,
+) (*defs.APIForwardDest, error) {
+	return nil, conf.ErrPathNotFound
+}
+
+func (*testStaticSourcesPathManager) APIForwardDestsDelete(string, uuid.UUID) error {
+	return conf.ErrPathNotFound
+}
+
 func (m *testStaticSourcesPathManager) APIStaticSourcesGet(path string) (*defs.APIStaticSource, error) {
 	switch path {
 	case "my/nested/stream":

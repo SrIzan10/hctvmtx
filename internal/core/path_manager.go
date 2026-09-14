@@ -97,21 +97,23 @@ type pathManager struct {
 	paths     map[string]*path
 
 	// in
-	chReloadConf          chan map[string]*conf.Path
-	chSetHLSServer        chan pathSetHLSServerReq
-	chRemovePath          chan *path
-	chClosePathIfIdle     chan *path
-	chSetPathReady        chan *path
-	chSetPathNotReady     chan *path
-	chFindPathConf        chan defs.PathFindPathConfReq
-	chDescribe            chan defs.PathDescribeReq
-	chAddReader           chan defs.PathAddReaderReq
-	chAddPublisher        chan defs.PathAddPublisherReq
-	chAPIPathsList        chan pathAPIPathsListReq
-	chAPIPathsGet         chan pathAPIPathsGetReq
-	chAPIForwardDestsList chan pathAPIForwardDestsListReq
-	chAPIForwardDestsGet  chan pathAPIForwardDestsGetReq
-	chAPIStaticSourcesGet chan pathAPIStaticSourcesGetReq
+	chReloadConf            chan map[string]*conf.Path
+	chSetHLSServer          chan pathSetHLSServerReq
+	chRemovePath            chan *path
+	chClosePathIfIdle       chan *path
+	chSetPathReady          chan *path
+	chSetPathNotReady       chan *path
+	chFindPathConf          chan defs.PathFindPathConfReq
+	chDescribe              chan defs.PathDescribeReq
+	chAddReader             chan defs.PathAddReaderReq
+	chAddPublisher          chan defs.PathAddPublisherReq
+	chAPIPathsList          chan pathAPIPathsListReq
+	chAPIPathsGet           chan pathAPIPathsGetReq
+	chAPIForwardDestsList   chan pathAPIForwardDestsListReq
+	chAPIForwardDestsGet    chan pathAPIForwardDestsGetReq
+	chAPIForwardDestsAdd    chan pathAPIForwardDestsAddReq
+	chAPIForwardDestsDelete chan pathAPIForwardDestsDeleteReq
+	chAPIStaticSourcesGet   chan pathAPIStaticSourcesGetReq
 }
 
 func (pm *pathManager) initialize() {
@@ -134,6 +136,8 @@ func (pm *pathManager) initialize() {
 	pm.chAPIPathsGet = make(chan pathAPIPathsGetReq)
 	pm.chAPIForwardDestsList = make(chan pathAPIForwardDestsListReq)
 	pm.chAPIForwardDestsGet = make(chan pathAPIForwardDestsGetReq)
+	pm.chAPIForwardDestsAdd = make(chan pathAPIForwardDestsAddReq)
+	pm.chAPIForwardDestsDelete = make(chan pathAPIForwardDestsDeleteReq)
 	pm.chAPIStaticSourcesGet = make(chan pathAPIStaticSourcesGetReq)
 
 	for _, pathConf := range pm.pathConfs {
@@ -220,6 +224,12 @@ outer:
 
 		case req := <-pm.chAPIForwardDestsGet:
 			pm.doAPIForwardDestsGet(req)
+
+		case req := <-pm.chAPIForwardDestsAdd:
+			pm.doAPIForwardDestsAdd(req)
+
+		case req := <-pm.chAPIForwardDestsDelete:
+			pm.doAPIForwardDestsDelete(req)
 
 		case req := <-pm.chAPIStaticSourcesGet:
 			pm.doAPIStaticSourcesGet(req)
@@ -492,6 +502,26 @@ func (pm *pathManager) doAPIForwardDestsGet(req pathAPIForwardDestsGetReq) {
 	}
 
 	req.res <- pathAPIForwardDestsGetRes{path: pa}
+}
+
+func (pm *pathManager) doAPIForwardDestsAdd(req pathAPIForwardDestsAddReq) {
+	pa, ok := pm.paths[req.name]
+	if !ok {
+		req.res <- pathAPIForwardDestsAddRes{err: conf.ErrPathNotFound}
+		return
+	}
+
+	req.res <- pathAPIForwardDestsAddRes{path: pa}
+}
+
+func (pm *pathManager) doAPIForwardDestsDelete(req pathAPIForwardDestsDeleteReq) {
+	pa, ok := pm.paths[req.name]
+	if !ok {
+		req.res <- pathAPIForwardDestsDeleteRes{err: conf.ErrPathNotFound}
+		return
+	}
+
+	req.res <- pathAPIForwardDestsDeleteRes{path: pa}
 }
 
 func (pm *pathManager) doAPIStaticSourcesGet(req pathAPIStaticSourcesGetReq) {
@@ -791,6 +821,49 @@ func (pm *pathManager) APIForwardDestsGet(name string, id uuid.UUID) (*defs.APIF
 
 	case <-pm.ctx.Done():
 		return nil, fmt.Errorf("terminated")
+	}
+}
+
+// APIForwardDestsAdd implements defs.APIPathManager.
+func (pm *pathManager) APIForwardDestsAdd(name string, dest conf.ForwardDest) (*defs.APIForwardDest, error) {
+	req := pathAPIForwardDestsAddReq{
+		name: name,
+		res:  make(chan pathAPIForwardDestsAddRes),
+	}
+
+	select {
+	case pm.chAPIForwardDestsAdd <- req:
+		res := <-req.res
+		if res.err != nil {
+			return nil, res.err
+		}
+
+		data, err := res.path.APIForwardDestsAdd(dest)
+		return data, err
+
+	case <-pm.ctx.Done():
+		return nil, fmt.Errorf("terminated")
+	}
+}
+
+// APIForwardDestsDelete implements defs.APIPathManager.
+func (pm *pathManager) APIForwardDestsDelete(name string, id uuid.UUID) error {
+	req := pathAPIForwardDestsDeleteReq{
+		name: name,
+		res:  make(chan pathAPIForwardDestsDeleteRes),
+	}
+
+	select {
+	case pm.chAPIForwardDestsDelete <- req:
+		res := <-req.res
+		if res.err != nil {
+			return res.err
+		}
+
+		return res.path.APIForwardDestsDelete(id)
+
+	case <-pm.ctx.Done():
+		return fmt.Errorf("terminated")
 	}
 }
 

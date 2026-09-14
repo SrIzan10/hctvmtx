@@ -10,6 +10,8 @@ Incoming streams can be natively forwarded to other servers with the following p
 
 It is also possible to use [FFmpeg](#ffmpeg) to perform the forwarding.
 
+Forward destinations can also be added and removed on demand through the [API](#on-demand-forwarding-through-the-api), without editing the configuration or restarting the server.
+
 We provide instructions to forward streams to the following services:
 
 - [YouTube](#youtube)
@@ -101,6 +103,39 @@ paths:
         # openssl x509 -in server.crt -noout -fingerprint -sha256 | cut -d "=" -f2 | tr -d ':'
         destFingerprint:
 ```
+
+## On-demand forwarding through the API
+
+Besides the `forward` entries in the configuration, forward destinations can be started and stopped at runtime by calling the [control API](21-control-api.md) (must be enabled with `api: yes`). This is useful to forward a stream (for example to YouTube or Twitch) only for as long as needed, without touching the configuration.
+
+To start forwarding a path to a destination, send a `POST` request with the destination in the body:
+
+```bash
+curl -X POST "http://localhost:9997/v3/paths/forward-dests/add?path=mypath" \
+  -H "Content-Type: application/json" \
+  -d '{"dest": "rtmp://user:pass@host:port/path#streamKey"}'
+```
+
+The request body accepts the same fields as a `forward` entry (`dest`, `destFingerprint`, `moqTransport`, `whipBearerToken`). The response contains the newly created forward destination, including its `id`:
+
+```json
+{
+  "id": "...",
+  "pos": 2,
+  "created": "...",
+  "state": "forwarding",
+  "type": "rtmp",
+  ...
+}
+```
+
+To stop forwarding, send a `DELETE` request with the path name and the destination `id`:
+
+```bash
+curl -X DELETE "http://localhost:9997/v3/paths/forward-dests/delete?path=mypath&id=<id>"
+```
+
+The current state of every forward destination of a path (statically configured or added on demand) can be inspected with `GET /v3/paths/forward-dests/list?path=mypath`.
 
 ## FFmpeg
 

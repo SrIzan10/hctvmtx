@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/bluenviron/mediamtx/internal/conf"
 )
 
 // APIPathManager contains methods used by the API and Metrics server.
@@ -12,6 +14,8 @@ type APIPathManager interface {
 	APIPathsGet(string) (*APIPath, error)
 	APIForwardDestsList(string) (*APIForwardDestList, error)
 	APIForwardDestsGet(string, uuid.UUID) (*APIForwardDest, error)
+	APIForwardDestsAdd(string, conf.ForwardDest) (*APIForwardDest, error)
+	APIForwardDestsDelete(string, uuid.UUID) error
 	APIStaticSourcesGet(string) (*APIStaticSource, error)
 }
 

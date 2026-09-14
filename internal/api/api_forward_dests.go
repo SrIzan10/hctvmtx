@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/bluenviron/mediamtx/internal/conf"
+	"github.com/bluenviron/mediamtx/internal/conf/jsonwrapper"
 	"github.com/bluenviron/mediamtx/internal/forward"
 )
 
@@ -64,4 +65,57 @@ func (a *API) onForwardDestsGet(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, data)
+}
+
+func (a *API) onForwardDestsAdd(ctx *gin.Context) {
+	pathName := ctx.Query("path")
+	if pathName == "" {
+		a.writeError(ctx, http.StatusBadRequest, fmt.Errorf("invalid path"))
+		return
+	}
+
+	var dest conf.ForwardDest
+	err := jsonwrapper.Decode(&customLimitReader{ctx.Request.Body, maxInboundConfigSize}, &dest)
+	if err != nil {
+		a.writeError(ctx, http.StatusBadRequest, err)
+		return
+	}
+
+	data, err := a.PathManager.APIForwardDestsAdd(pathName, dest)
+	if err != nil {
+		if errors.Is(err, conf.ErrPathNotFound) {
+			a.writeError(ctx, http.StatusNotFound, err)
+		} else {
+			a.writeError(ctx, http.StatusBadRequest, err)
+		}
+		return
+	}
+
+	ctx.JSON(http.StatusOK, data)
+}
+
+func (a *API) onForwardDestsDelete(ctx *gin.Context) {
+	id, err := uuid.Parse(ctx.Query("id"))
+	if err != nil {
+		a.writeError(ctx, http.StatusBadRequest, err)
+		return
+	}
+
+	pathName := ctx.Query("path")
+	if pathName == "" {
+		a.writeError(ctx, http.StatusBadRequest, fmt.Errorf("invalid path"))
+		return
+	}
+
+	err = a.PathManager.APIForwardDestsDelete(pathName, id)
+	if err != nil {
+		if errors.Is(err, conf.ErrPathNotFound) || errors.Is(err, forward.ErrDestNotFound) {
+			a.writeError(ctx, http.StatusNotFound, err)
+		} else {
+			a.writeError(ctx, http.StatusInternalServerError, err)
+		}
+		return
+	}
+
+	a.writeOK(ctx)
 }

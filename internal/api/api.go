@@ -125,6 +125,8 @@ func (a *API) Initialize() error {
 	group.GET("/paths/get/*name", a.onPathsGet)
 	group.GET("/paths/forward-dests/list", a.onForwardDestsList)
 	group.GET("/paths/forward-dests/get", a.onForwardDestsGet)
+	group.POST("/paths/forward-dests/add", a.onForwardDestsAdd)
+	group.DELETE("/paths/forward-dests/delete", a.onForwardDestsDelete)
 	group.GET("/paths/static-sources/get/*name", a.onStaticSourcesGet)
 
 	// deprecated

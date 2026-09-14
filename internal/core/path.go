@@ -90,6 +90,26 @@ type pathAPIForwardDestsGetReq struct {
 	res  chan pathAPIForwardDestsGetRes
 }
 
+type pathAPIForwardDestsAddRes struct {
+	path *path
+	err  error
+}
+
+type pathAPIForwardDestsAddReq struct {
+	name string
+	res  chan pathAPIForwardDestsAddRes
+}
+
+type pathAPIForwardDestsDeleteRes struct {
+	path *path
+	err  error
+}
+
+type pathAPIForwardDestsDeleteReq struct {
+	name string
+	res  chan pathAPIForwardDestsDeleteRes
+}
+
 type pathAPIStaticSourcesGetRes struct {
 	path *path
 	data *defs.APIStaticSource
@@ -1237,6 +1257,14 @@ func (pa *path) APIForwardDestsList() *defs.APIForwardDestList {
 
 func (pa *path) APIForwardDestsGet(destID uuid.UUID) (*defs.APIForwardDest, error) {
 	return pa.forwardManager.APIGet(destID)
+}
+
+func (pa *path) APIForwardDestsAdd(dest conf.ForwardDest) (*defs.APIForwardDest, error) {
+	return pa.forwardManager.APIAdd(dest)
+}
+
+func (pa *path) APIForwardDestsDelete(destID uuid.UUID) error {
+	return pa.forwardManager.APIDelete(destID)
 }
 
 func (pa *path) APIStaticSourcesGet(req pathAPIStaticSourcesGetReq) (*defs.APIStaticSource, error) {

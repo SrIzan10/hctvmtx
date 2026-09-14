@@ -70,6 +70,14 @@ func (dummyPathManager) APIForwardDestsGet(string, uuid.UUID) (*defs.APIForwardD
 	panic("unused")
 }
 
+func (dummyPathManager) APIForwardDestsAdd(string, conf.ForwardDest) (*defs.APIForwardDest, error) {
+	panic("unused")
+}
+
+func (dummyPathManager) APIForwardDestsDelete(string, uuid.UUID) error {
+	panic("unused")
+}
+
 func (dummyPathManager) APIStaticSourcesGet(string) (*defs.APIStaticSource, error) {
 	panic("unused")
 }
@@ -403,6 +411,14 @@ func (emptyPathManager) APIForwardDestsList(string) (*defs.APIForwardDestList, e
 }
 
 func (emptyPathManager) APIForwardDestsGet(string, uuid.UUID) (*defs.APIForwardDest, error) {
+	panic("unused")
+}
+
+func (emptyPathManager) APIForwardDestsAdd(string, conf.ForwardDest) (*defs.APIForwardDest, error) {
+	panic("unused")
+}
+
+func (emptyPathManager) APIForwardDestsDelete(string, uuid.UUID) error {
 	panic("unused")
 }
 

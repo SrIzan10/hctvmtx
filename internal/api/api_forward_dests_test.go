@@ -52,6 +52,36 @@ func (m *testForwardDestsPathManager) APIForwardDestsGet(path string, id uuid.UU
 	return item, nil
 }
 
+func (m *testForwardDestsPathManager) APIForwardDestsAdd(
+	path string, dest conf.ForwardDest,
+) (*defs.APIForwardDest, error) {
+	if path != "my/nested/stream" {
+		return nil, conf.ErrPathNotFound
+	}
+
+	id := uuid.New()
+	item := &defs.APIForwardDest{
+		ID:   id,
+		Conf: dest,
+	}
+	m.items[id] = item
+
+	return item, nil
+}
+
+func (m *testForwardDestsPathManager) APIForwardDestsDelete(path string, id uuid.UUID) error {
+	if path != "my/nested/stream" {
+		return conf.ErrPathNotFound
+	}
+
+	if _, ok := m.items[id]; !ok {
+		return forward.ErrDestNotFound
+	}
+
+	delete(m.items, id)
+	return nil
+}
+
 func (*testForwardDestsPathManager) APIStaticSourcesGet(string) (*defs.APIStaticSource, error) {
 	return nil, conf.ErrPathNotFound
 }

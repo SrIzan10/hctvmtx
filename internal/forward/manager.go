@@ -108,21 +108,77 @@ func (m *Manager) ReloadConf(forward conf.Forward) {
 
 // Start starts all forward destinations.
 func (m *Manager) Start(strm *stream.Stream) {
+	m.mutex.Lock()
 	m.started = true
 	m.stream = strm
+	handlers := append([]*DestHandler(nil), m.destHandlers...)
+	m.mutex.Unlock()
 
-	for _, dest := range m.destHandlers {
+	for _, dest := range handlers {
 		dest.start(strm)
 	}
 }
 
 // Stop stops all forward destinations.
 func (m *Manager) Stop() {
+	m.mutex.Lock()
 	m.started = false
+	handlers := append([]*DestHandler(nil), m.destHandlers...)
+	m.mutex.Unlock()
 
-	for _, dest := range m.destHandlers {
+	for _, dest := range handlers {
 		dest.stop()
 	}
+}
+
+// APIAdd adds a forward destination on demand and starts it if the manager is running.
+func (m *Manager) APIAdd(dest conf.ForwardDest) (*defs.APIForwardDest, error) {
+	if err := dest.Validate(); err != nil {
+		return nil, err
+	}
+
+	m.mutex.Lock()
+
+	handler := m.createDestHandler(len(m.destHandlers)+1, dest)
+	if m.started {
+		handler.start(m.stream)
+	}
+	m.destHandlers = append(m.destHandlers, handler)
+
+	m.mutex.Unlock()
+
+	item := handler.APIItem()
+	return &item, nil
+}
+
+// APIDelete stops and removes a forward destination that was added on demand or is statically configured.
+func (m *Manager) APIDelete(id uuid.UUID) error {
+	m.mutex.Lock()
+
+	index := -1
+	for i, handler := range m.destHandlers {
+		if handler.ID() == id {
+			index = i
+			break
+		}
+	}
+
+	if index < 0 {
+		m.mutex.Unlock()
+		return ErrDestNotFound
+	}
+
+	handler := m.destHandlers[index]
+	m.destHandlers = append(m.destHandlers[:index:index], m.destHandlers[index+1:]...)
+	started := m.started
+
+	m.mutex.Unlock()
+
+	if started {
+		handler.stop()
+	}
+
+	return nil
 }
 
 // APIGet gets a forward destination.

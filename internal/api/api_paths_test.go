@@ -42,6 +42,14 @@ func (*testPathManager) APIForwardDestsGet(string, uuid.UUID) (*defs.APIForwardD
 	return nil, conf.ErrPathNotFound
 }
 
+func (*testPathManager) APIForwardDestsAdd(string, conf.ForwardDest) (*defs.APIForwardDest, error) {
+	return nil, conf.ErrPathNotFound
+}
+
+func (*testPathManager) APIForwardDestsDelete(string, uuid.UUID) error {
+	return conf.ErrPathNotFound
+}
+
 func (*testPathManager) APIStaticSourcesGet(string) (*defs.APIStaticSource, error) {
 	return nil, conf.ErrPathNotFound
 }

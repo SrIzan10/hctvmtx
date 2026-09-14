@@ -228,3 +228,68 @@ func TestManagerReloadConf(t *testing.T) {
 		})
 	}
 }
+
+func TestManagerAPIAddDelete(t *testing.T) {
+	for _, ca := range []string{
+		"idle",
+		"running",
+	} {
+		t.Run(ca, func(t *testing.T) {
+			m := &forward.Manager{
+				PathName: "test",
+				Forward: conf.Forward{
+					{Dest: "rtmp://localhost:5788/app/stream"},
+				},
+				Parent: test.NilLogger,
+			}
+			m.Initialize()
+
+			if ca == "running" {
+				desc := &description.Session{Medias: []*description.Media{{
+					Type:    description.MediaTypeVideo,
+					Formats: []format.Format{test.FormatH264},
+				}}}
+
+				strm := &stream.Stream{
+					OrigDesc:          desc,
+					WriteQueueSize:    512,
+					RTPMaxPayloadSize: 1450,
+					Parent:            test.NilLogger,
+				}
+				require.NoError(t, strm.Initialize())
+				defer strm.Close()
+
+				m.Start(strm)
+				defer m.Stop()
+			}
+
+			// adding an invalid destination fails and does not touch the list.
+			_, err := m.APIAdd(conf.ForwardDest{Dest: "invalid://localhost/stream"})
+			require.Error(t, err)
+			require.Len(t, m.APIList().Items, 1)
+
+			added, err := m.APIAdd(conf.ForwardDest{Dest: "rtsp://localhost:5789/stream"})
+			require.NoError(t, err)
+			require.Equal(t, defs.APIForwardDestTypeRTSP, added.Type)
+			require.Equal(t, 2, added.Pos)
+
+			list := m.APIList()
+			require.Len(t, list.Items, 2)
+
+			got, err := m.APIGet(added.ID)
+			require.NoError(t, err)
+			require.Equal(t, added.ID, got.ID)
+
+			err = m.APIDelete(added.ID)
+			require.NoError(t, err)
+
+			require.Len(t, m.APIList().Items, 1)
+
+			_, err = m.APIGet(added.ID)
+			require.ErrorIs(t, err, forward.ErrDestNotFound)
+
+			err = m.APIDelete(added.ID)
+			require.ErrorIs(t, err, forward.ErrDestNotFound)
+		})
+	}
+}

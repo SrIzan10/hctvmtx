@@ -1,10 +1,13 @@
 name: nightly_binaries
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   nightly_binaries:
@@ -17,7 +20,60 @@ jobs:
 
       - run: make binaries
 
+      - run: cd binaries && sha256sum -b * > checksums.sha256
+
       - uses: actions/upload-artifact@v7
         with:
           name: binaries
           path: binaries
+
+      - uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs').promises;
+            const { repo: { owner, repo } } = context;
+            const sha = context.sha;
+
+            let existing;
+            try {
+              existing = await github.rest.repos.getReleaseByTag({ owner, repo, tag: 'nightly' });
+            } catch (exc) {
+              existing = null;
+            }
+
+            if (existing) {
+              await github.rest.repos.deleteRelease({ owner, repo, release_id: existing.data.id });
+
+              try {
+                await github.rest.git.deleteRef({ owner, repo, ref: 'tags/nightly' });
+              } catch (exc) {
+                console.error(exc.toString());
+              }
+            }
+
+            const body = `Automatic build from commit ${sha}.\n`
+              + `\n`
+              + 'These binaries are built from the latest commit on `main` and may be unstable. '
+              + 'This release is overwritten on every new commit.\n';
+
+            const res = await github.rest.repos.createRelease({
+              owner,
+              repo,
+              tag_name: 'nightly',
+              target_commitish: sha,
+              name: `nightly (${sha.substring(0, 7)})`,
+              body,
+              prerelease: true,
+            });
+            const release_id = res.data.id;
+
+            for (const name of await fs.readdir('./binaries/')) {
+              await github.rest.repos.uploadReleaseAsset({
+                owner,
+                repo,
+                release_id,
+                name,
+                data: await fs.readFile(`./binaries/${name}`),
+              });
+            }

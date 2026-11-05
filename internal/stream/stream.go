@@ -496,7 +496,6 @@ func (s *Stream) AddReader(r *Reader) {
 	r.start()
 
 	s.mutex.Lock()
-	defer s.mutex.Unlock()
 
 	s.readers[r] = struct{}{}
 
@@ -513,6 +512,13 @@ func (s *Stream) AddReader(r *Reader) {
 	case <-s.hasReaders:
 	default:
 		close(s.hasReaders)
+	}
+
+	s.mutex.Unlock()
+
+	// outside the mutex, since callbacks are allowed to add readers to the stream
+	for _, cb := range r.onAdds {
+		r.onRemoves = append(r.onRemoves, cb(s))
 	}
 }
 
@@ -534,7 +540,27 @@ func (s *Stream) RemoveReader(r *Reader) {
 
 	s.mutex.Unlock()
 
+	for _, onRemove := range r.onRemoves {
+		onRemove()
+	}
+	r.onRemoves = nil
+
 	r.stop()
+}
+
+// FormatStats returns statistics of every format of the stream,
+// in the same order as the formats of OrigDesc.
+func (s *Stream) FormatStats() []FormatStats {
+	var out []FormatStats
+
+	for _, media := range s.OrigDesc.Medias {
+		sm := s.medias[media]
+		for _, forma := range media.Formats {
+			out = append(out, sm.formats[forma].stats.get())
+		}
+	}
+
+	return out
 }
 
 // WaitForReaders waits for the stream to have at least one reader.

@@ -107,6 +107,10 @@ var structs = []struct {
 		typ:          reflect.TypeOf(defs.APIPathTrack{}),
 	},
 	{
+		externalName: "PathTrackStats",
+		typ:          reflect.TypeOf(defs.APIPathTrackStats{}),
+	},
+	{
 		externalName: "PathTrackCodecPropsAC3",
 		typ:          reflect.TypeOf(defs.APIPathTrackCodecPropsAC3{}),
 	},

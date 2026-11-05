@@ -59,6 +59,7 @@ type streamFormat struct {
 	rtpTimeOffset uint32
 	ntpEstimator  *ntpestimator.Estimator
 	onDatas       map[*Reader]OnDataFunc
+	stats         *formatStats
 }
 
 func (sf *streamFormat) initialize() error {
@@ -70,6 +71,7 @@ func (sf *streamFormat) initialize() error {
 		sf.forceRemux = true
 	}
 
+	sf.stats = newFormatStats(sf.outFormat)
 	sf.formatUpdater = newFormatUpdater(sf.outFormat)
 	sf.unitRemuxer = newUnitRemuxer(sf.outFormat)
 

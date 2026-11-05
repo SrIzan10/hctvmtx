@@ -1355,6 +1355,30 @@ components:
           allOf:
             - $ref: "#/components/schemas/PathTrackCodecProps"
           nullable: true
+        stats:
+          type: object
+          allOf:
+            - $ref: "#/components/schemas/PathTrackStats"
+          nullable: true
+
+    PathTrackStats:
+      type: object
+      properties:
+        bitrate:
+          type: integer
+          format: uint64
+          description: average bits per second. Zero until measured.
+        frameRate:
+          type: number
+          format: double
+          description: average frames per second. Zero for audio tracks or until measured.
+        hasBFrames:
+          type: boolean
+          description: whether the track contains B-frames.
+        keyframeInterval:
+          type: number
+          format: double
+          description: seconds between keyframes. Zero for audio tracks or until measured.
 
     PathTrackCodecPropsAC3:
       type: object

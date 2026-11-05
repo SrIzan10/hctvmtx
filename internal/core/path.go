@@ -719,6 +719,22 @@ func (pa *path) doAPIStaticSourcesGet(req pathAPIStaticSourcesGetReq) {
 	req.res <- pathAPIStaticSourcesGetRes{data: source.APIItem()}
 }
 
+func (pa *path) apiTrackStats() []defs.APIPathTrackStats {
+	formatStats := pa.stream.FormatStats()
+	out := make([]defs.APIPathTrackStats, len(formatStats))
+
+	for i, s := range formatStats {
+		out[i] = defs.APIPathTrackStats{
+			FrameRate:        s.FrameRate,
+			Bitrate:          s.Bitrate,
+			KeyframeInterval: s.KeyframeInterval.Seconds(),
+			HasBFrames:       s.HasBFrames,
+		}
+	}
+
+	return out
+}
+
 func (pa *path) doAPIPathsGet(req pathAPIPathsGetReq) {
 	var outDesc *description.Session
 	if pa.isAvailable() {
@@ -770,7 +786,7 @@ func (pa *path) doAPIPathsGet(req pathAPIPathsGetReq) {
 				if !pa.isAvailable() {
 					return []defs.APIPathTrack{}
 				}
-				return defs.MediasToTracks(outDesc.Medias)
+				return defs.MediasToTracksWithStats(outDesc.Medias, pa.apiTrackStats())
 			}(),
 			InboundBytes: func() uint64 {
 				if !pa.isAvailable() {

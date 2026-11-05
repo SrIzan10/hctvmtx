@@ -20,6 +20,7 @@ import (
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 
+	"github.com/bluenviron/mediamtx/internal/aacopus"
 	"github.com/bluenviron/mediamtx/internal/formatlabel"
 	"github.com/bluenviron/mediamtx/internal/logger"
 	"github.com/bluenviron/mediamtx/internal/stream"
@@ -325,6 +326,76 @@ func setupVideoTrack(
 	return nil, nil
 }
 
+func opusCaps(channelCount int) (webrtc.RTPCodecCapability, error) {
+	switch channelCount {
+	case 1, 2:
+		return webrtc.RTPCodecCapability{
+			MimeType:  webrtc.MimeTypeOpus,
+			ClockRate: 48000,
+			Channels:  2,
+			SDPFmtpLine: func() string {
+				s := "minptime=10;useinbandfec=1"
+				if channelCount == 2 {
+					s += ";stereo=1;sprop-stereo=1"
+				}
+				return s
+			}(),
+		}, nil
+
+	case 3, 4, 5, 6, 7, 8:
+		return webrtc.RTPCodecCapability{
+			MimeType:    mimeTypeMultiopus,
+			ClockRate:   48000,
+			Channels:    uint16(channelCount),
+			SDPFmtpLine: multichannelOpusSDP[channelCount],
+		}, nil
+
+	default:
+		return webrtc.RTPCodecCapability{}, fmt.Errorf("unsupported channel count: %d", channelCount)
+	}
+}
+
+// opusWriter returns a callback that writes units containing Opus RTP packets to track.
+func opusWriter(track *OutboundTrack) stream.OnDataFunc {
+	var pts uint32
+	ptsInitialized := false
+	ptsTolerance := uint32(multiplyAndDivide2(
+		audioPTSDriftTolerance,
+		48000,
+		time.Second,
+	))
+
+	return func(u *unit.Unit) error {
+		// recompute timestamp from scratch.
+		// Chrome requires a precise timestamp that FFmpeg doesn't provide.
+		// also reset in case of drifts.
+		firstPTS := u.RTPPackets[0].Timestamp
+		if !ptsInitialized || ptsDriftExceeded(pts, firstPTS, ptsTolerance) {
+			pts = firstPTS
+			ptsInitialized = true
+		}
+
+		baseTimestamp := pts
+
+		for _, orig := range u.RTPPackets {
+			// create a copy of the packet that we can edit freely
+			pkt := &rtp.Packet{
+				Header:  orig.Header,
+				Payload: orig.Payload,
+			}
+
+			pkt.Timestamp = pts
+
+			ntp := u.NTP.Add(timestampToDuration(int64(pkt.Timestamp-baseTimestamp), 48000))
+			track.WriteRTPWithNTP(pkt, ntp) //nolint:errcheck
+
+			pts += uint32(opus.PacketDuration2(pkt.Payload))
+		}
+
+		return nil
+	}
+}
+
 func setupAudioTrack(
 	desc *description.Session,
 	r *stream.Reader,
@@ -333,79 +404,16 @@ func setupAudioTrack(
 	media := desc.FindFormat(&opusFormat)
 
 	if opusFormat != nil {
-		var caps webrtc.RTPCodecCapability
-
-		switch opusFormat.ChannelCount {
-		case 1, 2:
-			caps = webrtc.RTPCodecCapability{
-				MimeType:  webrtc.MimeTypeOpus,
-				ClockRate: 48000,
-				Channels:  2,
-				SDPFmtpLine: func() string {
-					s := "minptime=10;useinbandfec=1"
-					if opusFormat.ChannelCount == 2 {
-						s += ";stereo=1;sprop-stereo=1"
-					}
-					return s
-				}(),
-			}
-
-		case 3, 4, 5, 6, 7, 8:
-			caps = webrtc.RTPCodecCapability{
-				MimeType:    mimeTypeMultiopus,
-				ClockRate:   48000,
-				Channels:    uint16(opusFormat.ChannelCount),
-				SDPFmtpLine: multichannelOpusSDP[opusFormat.ChannelCount],
-			}
-
-		default:
-			return nil, fmt.Errorf("unsupported channel count: %d", opusFormat.ChannelCount)
+		caps, err := opusCaps(opusFormat.ChannelCount)
+		if err != nil {
+			return nil, err
 		}
 
 		track := &OutboundTrack{
 			Caps: caps,
 		}
 
-		var pts uint32
-		ptsInitialized := false
-		ptsTolerance := uint32(multiplyAndDivide2(
-			audioPTSDriftTolerance,
-			time.Duration(opusFormat.ClockRate()),
-			time.Second,
-		))
-
-		r.OnData(
-			media,
-			opusFormat,
-			func(u *unit.Unit) error {
-				// recompute timestamp from scratch.
-				// Chrome requires a precise timestamp that FFmpeg doesn't provide.
-				// also reset in case of drifts.
-				firstPTS := u.RTPPackets[0].Timestamp
-				if !ptsInitialized || ptsDriftExceeded(pts, firstPTS, ptsTolerance) {
-					pts = firstPTS
-					ptsInitialized = true
-				}
-
-				baseTimestamp := pts
-
-				for _, orig := range u.RTPPackets {
-					// create a copy of the packet that we can edit freely
-					pkt := &rtp.Packet{
-						Header:  orig.Header,
-						Payload: orig.Payload,
-					}
-
-					pkt.Timestamp = pts
-
-					ntp := u.NTP.Add(timestampToDuration(int64(pkt.Timestamp-baseTimestamp), 48000))
-					track.WriteRTPWithNTP(pkt, ntp) //nolint:errcheck
-
-					pts += uint32(opus.PacketDuration2(pkt.Payload))
-				}
-
-				return nil
-			})
+		r.OnData(media, opusFormat, opusWriter(track))
 
 		return track, nil
 	}
@@ -696,6 +704,40 @@ func setupAudioTrack(
 		return track, nil
 	}
 
+	var mpeg4AudioFormat *format.MPEG4Audio
+	media = desc.FindFormat(&mpeg4AudioFormat)
+
+	if mpeg4AudioFormat != nil {
+		channelCount, ok := aacopus.Supported(mpeg4AudioFormat)
+		if !ok {
+			return nil, nil
+		}
+
+		caps, err := opusCaps(channelCount)
+		if err != nil {
+			return nil, err
+		}
+
+		track := &OutboundTrack{
+			Caps:           caps,
+			transcodedFrom: mpeg4AudioFormat,
+		}
+
+		// the transcoder is shared by all readers of the stream, and it's started and
+		// stopped together with the reader, since its lifetime isn't known here.
+		writer := opusWriter(track)
+		r.OnAdd(func(strm *stream.Stream) func() {
+			unsubscribe, err2 := aacopus.Subscribe(strm, media, mpeg4AudioFormat, writer)
+			if err2 != nil {
+				r.Parent.Log(logger.Warn, "unable to transcode AAC to Opus: %v", err2)
+				return func() {}
+			}
+			return unsubscribe
+		})
+
+		return track, nil
+	}
+
 	return nil, nil
 }
 
@@ -727,6 +769,24 @@ func setupKLVDataChannel(
 	}
 
 	return nil, nil
+}
+
+// isTranscodedFormat returns whether forma is fed to track through a transcoder
+// instead of a OnData callback.
+func isTranscodedFormat(track *OutboundTrack, forma format.Format) bool {
+	return track != nil && track.transcodedFrom == forma
+}
+
+// ReadFormats returns the formats of the stream that are sent to pc, including
+// those that reach it through a transcoder instead of a OnData callback of r.
+func ReadFormats(r *stream.Reader, pc *PeerConnection) []format.Format {
+	formats := r.Formats()
+	for _, track := range pc.OutboundTracks {
+		if track.transcodedFrom != nil {
+			formats = append(formats, track.transcodedFrom)
+		}
+	}
+	return formats
 }
 
 // FromStream maps a MediaMTX stream to a WebRTC connection
@@ -771,7 +831,9 @@ func FromStream(
 	n := 1
 	for _, media := range desc.Medias {
 		for _, forma := range media.Formats {
-			if !slices.Contains(setuppedFormats, forma) {
+			if isTranscodedFormat(audioTrack, forma) {
+				r.Parent.Log(logger.Info, "transcoding track %d (%s) to Opus", n, formatlabel.FormatToLabel(forma))
+			} else if !slices.Contains(setuppedFormats, forma) {
 				r.Parent.Log(logger.Warn, "skipping track %d (%s)", n, formatlabel.FormatToLabel(forma))
 			}
 			n++

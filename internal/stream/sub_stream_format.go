@@ -162,6 +162,7 @@ func (ssf *subStreamFormat) writeUnitInner(u *unit.Unit) error {
 
 	size := unitSize(u)
 	ssf.streamFormat.inboundBytes.Add(size)
+	ssf.streamFormat.stats.update(u, size)
 
 	ssf.streamFormat.writeRTSP(u.RTPPackets, u.NTP)
 

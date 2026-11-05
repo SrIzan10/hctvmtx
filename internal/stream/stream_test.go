@@ -904,3 +904,44 @@ func TestStreamAlwaysAvailableConcurrentReaders(t *testing.T) {
 	close(done)
 	readersWG.Wait()
 }
+
+func TestStreamReaderOnAdd(t *testing.T) {
+	desc := &description.Session{Medias: []*description.Media{{
+		Type:    description.MediaTypeVideo,
+		Formats: []format.Format{&format.H264{PacketizationMode: 1}},
+	}}}
+
+	strm := &Stream{
+		OrigDesc:          desc,
+		WriteQueueSize:    512,
+		RTPMaxPayloadSize: 1450,
+		Parent:            &nilLogger{},
+	}
+	err := strm.Initialize()
+	require.NoError(t, err)
+	defer strm.Close()
+
+	var events []string
+
+	r := &Reader{Parent: &nilLogger{}}
+	r.OnAdd(func(s *Stream) func() {
+		require.Same(t, strm, s)
+		events = append(events, "add")
+
+		// callbacks can add other readers to the stream, like a shared transcoder does
+		inner := &Reader{Parent: &nilLogger{}}
+		s.AddReader(inner)
+
+		return func() {
+			events = append(events, "remove")
+			s.RemoveReader(inner)
+		}
+	})
+	require.Empty(t, events)
+
+	strm.AddReader(r)
+	require.Equal(t, []string{"add"}, events)
+
+	strm.RemoveReader(r)
+	require.Equal(t, []string{"add", "remove"}, events)
+}

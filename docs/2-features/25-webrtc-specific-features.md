@@ -23,6 +23,25 @@ ffmpeg -i rtsp://original-source \
 -f rtsp rtsp://localhost:8554/mystream
 ```
 
+## AAC audio
+
+WebRTC doesn't support AAC, which is the audio codec used by default by OBS Studio, FFmpeg and most RTMP and SRT encoders. Without any conversion, WebRTC readers of these streams receive video without audio.
+
+The `transcode` image variant (`ghcr.io/srizan10/hctvmtx:latest-transcode`) converts AAC audio into Opus for WebRTC readers. Transcoding:
+
+- happens only while a stream has at least one WebRTC reader, and stops with the last one;
+- is shared by every WebRTC reader of a stream, so it costs the same with 1 or 100 readers (around 0.5% of a CPU core per stream);
+- uses FFmpeg's AAC decoder and libopus, and supports AAC-LC and HE-AAC (v1 and v2) with one or two channels;
+- leaves video and every other protocol untouched.
+
+The variant is built from `docker/transcode.Dockerfile`, which links minimal static builds of FFmpeg and libopus. To build a binary with transcoding outside Docker, use cgo with the `aacopus` tag and the development files of libavcodec, libavutil and libopus installed:
+
+```sh
+CGO_ENABLED=1 go build -tags aacopus .
+```
+
+Other builds keep sending no audio for AAC streams read with WebRTC.
+
 ## Solving WebRTC connectivity issues
 
 In WebRTC, the handshake between server and clients happens through standard HTTP requests and responses, while media streaming takes place inside a dedicated communication channel (peer connection) that is set up shortly after the handshake. The server supports establishing peer connections through the following methods (ordered by efficiency and simplicity):

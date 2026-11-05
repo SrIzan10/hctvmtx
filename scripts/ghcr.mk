@@ -37,3 +37,18 @@ ghcr:
 	--push
 
 	docker buildx rm builder
+
+# MediaMTX with AAC to Opus transcoding for WebRTC (cgo, see docker/transcode.Dockerfile).
+# amd64 only: building the codecs and cgo under emulation for other platforms takes too long.
+ghcr-transcode:
+	$(eval VERSION := $(shell git rev-parse --short HEAD))
+
+	echo $(GHCR_TOKEN) | docker login ghcr.io -u $(GHCR_ACTOR) --password-stdin
+
+	docker build -f docker/transcode.Dockerfile . \
+	--platform=linux/amd64 \
+	-t $(GHCR_REPOSITORY):$(VERSION)-transcode \
+	-t $(GHCR_REPOSITORY):latest-transcode
+
+	docker push $(GHCR_REPOSITORY):$(VERSION)-transcode
+	docker push $(GHCR_REPOSITORY):latest-transcode

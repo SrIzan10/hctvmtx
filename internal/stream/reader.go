@@ -15,12 +15,19 @@ import (
 // OnDataFunc is the callback passed to OnData().
 type OnDataFunc func(*unit.Unit) error
 
+// OnAddFunc is the callback passed to OnAdd().
+// It is called when the reader is added to a stream and returns a function
+// that is called when the reader is removed from it.
+type OnAddFunc func(*Stream) (onRemove func())
+
 // Reader is a stream reader.
 type Reader struct {
 	SkipOutboundBytes bool
 	Parent            logger.Writer
 
 	onDatas                 map[*description.Media]map[format.Format]OnDataFunc
+	onAdds                  []OnAddFunc
+	onRemoves               []func()
 	queueSize               int
 	buffer                  *ringbuffer.RingBuffer
 	outboundFramesDiscarded *counterdumper.Dumper
@@ -38,6 +45,13 @@ func (r *Reader) OnData(origMedia *description.Media, origFormat format.Format, 
 		r.onDatas[origMedia] = make(map[format.Format]OnDataFunc)
 	}
 	r.onDatas[origMedia][origFormat] = cb
+}
+
+// OnAdd registers a callback that is called when the reader is added to a stream.
+// It allows to tie resources shared between readers of a stream (like a transcoder)
+// to the lifetime of the reader, which is not known when setting up the reader.
+func (r *Reader) OnAdd(cb OnAddFunc) {
+	r.onAdds = append(r.onAdds, cb)
 }
 
 // Formats returns all formats for which the reader has registered a OnData callback.
